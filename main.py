@@ -8,18 +8,26 @@ from config import (
     WINDOW_HEIGHT,
     FPS,
     BACKGROUND_COLOR,
-    ACCENT_COLOR,
     HINT_TEXT_COLOR,
     TEXT_COLOR,
     FONT_NAME,
     WINDOW_CAPTION,
     HINT_TEXT,
     PLAYER_BASE_SPEED,
+    PLAYER_RADIUS,
     MONSTER_COLOR,
     MONSTER_RADIUS,
     MONSTER_SPAWN_INTERVAL_SECONDS,
     MONSTER_MIN_DISTANCE_FROM_PLAYER,
+    MONSTER_SPEED,
+    MONSTER_DAMAGE_DISTANCE,
+    MONSTER_DAMAGE_PER_SECOND,
+    MONSTER_SEPARATION_PASSES,
+    MONSTER_SEPARATION_PADDING,
+    PLAYER_MONSTER_PADDING,
 )
+from player import Player
+from monster import Monster
 
 
 def poll_quit_requested() -> bool:
@@ -55,29 +63,7 @@ def compute_move_vector() -> tuple[float, float]:
     return float(move_x), float(move_y)
 
 
-def update_player_position(
-    position_x: float,
-    position_y: float,
-    move_x: float,
-    move_y: float,
-    speed_pixels_per_second: float,
-    dt_seconds: float,
-) -> tuple[float, float]:
-    position_x += move_x * speed_pixels_per_second * dt_seconds
-    position_y += move_y * speed_pixels_per_second * dt_seconds
-    return position_x, position_y
-
-
-def clamp_to_screen(position_x: float, position_y: float) -> tuple[float, float]:
-    position_x = max(
-        16,
-        min(WINDOW_WIDTH - 16, position_x),
-    )
-    position_y = max(
-        16,
-        min(WINDOW_HEIGHT - 16, position_y),
-    )
-    return position_x, position_y
+ 
 
 
 def compose_hint_surfaces(
@@ -95,67 +81,171 @@ def render_scene(
     screen: pygame.Surface,
     hint_surfaces: list[pygame.Surface],
     hint_line_height: int,
-    player_x: float,
-    player_y: float,
+    player: Player,
     time_seconds: float,
-    monsters: list[tuple[float, float]],
+    monsters: list[Monster],
     timer_surface: pygame.Surface,
     timer_pos: tuple[int, int],
+    hp_surface: pygame.Surface,
+    hp_pos: tuple[int, int],
 ) -> None:
     screen.fill(BACKGROUND_COLOR)
 
     screen.blit(timer_surface, timer_pos)
+    screen.blit(hp_surface, hp_pos)
 
     y = 20
     for surf in hint_surfaces:
         screen.blit(surf, (20, y))
         y += hint_line_height
 
-    pulse = 4 + int(3 * (1 + math.sin(time_seconds * 4)))
-    pygame.draw.circle(
-        screen,
-        (60, 60, 72),
-        (int(player_x), int(player_y)),
-        18 + pulse,
-        width=2,
-    )
+    for monster in monsters:
+        monster.draw(screen)
 
-    pygame.draw.circle(
-        screen,
-        ACCENT_COLOR,
-        (int(player_x), int(player_y)),
-        12,
-    )
-
-    for m_x, m_y in monsters:
-        pygame.draw.circle(
-            screen,
-            MONSTER_COLOR,
-            (int(m_x), int(m_y)),
-            MONSTER_RADIUS,
-        )
+    player.draw(screen, time_seconds)
 
     pygame.display.flip()
 
 
-def generate_monster_position(
-    player_x: float,
-    player_y: float,
-) -> tuple[float, float]:
+def generate_monster(player: Player) -> Monster:
     # Try random positions away from the player
     for _ in range(32):
         x = random.uniform(16.0, float(WINDOW_WIDTH - 16))
         y = random.uniform(16.0, float(WINDOW_HEIGHT - 16))
         if (
-            math.hypot(x - player_x, y - player_y)
+            math.hypot(x - player.x, y - player.y)
             >= MONSTER_MIN_DISTANCE_FROM_PLAYER
         ):
-            return x, y
+            return Monster(x, y, float(MONSTER_SPEED))
 
     # Fallback: place near a corner far from player
-    x = 16.0 if player_x > WINDOW_WIDTH / 2 else float(WINDOW_WIDTH - 16)
-    y = 16.0 if player_y > WINDOW_HEIGHT / 2 else float(WINDOW_HEIGHT - 16)
-    return x, y
+    x = 16.0 if player.x > WINDOW_WIDTH / 2 else float(WINDOW_WIDTH - 16)
+    y = 16.0 if player.y > WINDOW_HEIGHT / 2 else float(WINDOW_HEIGHT - 16)
+    return Monster(x, y, float(MONSTER_SPEED))
+
+
+def apply_monster_damage(
+    player: Player,
+    monsters: list[Monster],
+    dt_seconds: float,
+) -> None:
+    damage_total = 0.0
+    for m in monsters:
+        if (
+            math.hypot(player.x - m.x, player.y - m.y)
+            <= MONSTER_DAMAGE_DISTANCE
+        ):
+            damage_total += MONSTER_DAMAGE_PER_SECOND * dt_seconds
+    if damage_total > 0.0:
+        player.take_damage(damage_total)
+
+
+def separate_monsters(monsters: list[Monster]) -> None:
+    if len(monsters) <= 1:
+        return
+    min_dist = float(MONSTER_RADIUS * 2) + MONSTER_SEPARATION_PADDING
+    for _ in range(MONSTER_SEPARATION_PASSES):
+        for i in range(len(monsters)):
+            mi = monsters[i]
+            for j in range(i + 1, len(monsters)):
+                mj = monsters[j]
+                dx = mj.x - mi.x
+                dy = mj.y - mi.y
+                dist = math.hypot(dx, dy)
+                if dist < 1e-6:
+                    # tiny nudge to avoid zero division
+                    dx, dy, dist = 1.0, 0.0, 1.0
+                if dist < min_dist:
+                    overlap = (min_dist - dist) * 0.5
+                    nx = dx / dist
+                    ny = dy / dist
+                    mi.x -= nx * overlap
+                    mi.y -= ny * overlap
+                    mj.x += nx * overlap
+                    mj.y += ny * overlap
+                    # clamp to screen
+                    mi.x = max(
+                        16.0 + MONSTER_RADIUS,
+                        min(
+                            float(
+                                WINDOW_WIDTH - 16 - MONSTER_RADIUS
+                            ),
+                            mi.x,
+                        ),
+                    )
+                    mi.y = max(
+                        16.0 + MONSTER_RADIUS,
+                        min(
+                            float(
+                                WINDOW_HEIGHT - 16 - MONSTER_RADIUS
+                            ),
+                            mi.y,
+                        ),
+                    )
+                    mj.x = max(
+                        16.0 + MONSTER_RADIUS,
+                        min(
+                            float(
+                                WINDOW_WIDTH - 16 - MONSTER_RADIUS
+                            ),
+                            mj.x,
+                        ),
+                    )
+                    mj.y = max(
+                        16.0 + MONSTER_RADIUS,
+                        min(
+                            float(
+                                WINDOW_HEIGHT - 16 - MONSTER_RADIUS
+                            ),
+                            mj.y,
+                        ),
+                    )
+
+
+def separate_player_and_monsters(
+    player: Player,
+    monsters: list[Monster],
+) -> None:
+    min_dist = float(PLAYER_RADIUS + MONSTER_RADIUS) \
+        + PLAYER_MONSTER_PADDING
+    for m in monsters:
+        dx = m.x - player.x
+        dy = m.y - player.y
+        dist = math.hypot(dx, dy)
+        if dist < 1e-6:
+            dx, dy, dist = 1.0, 0.0, 1.0
+        if dist < min_dist:
+            overlap = min_dist - dist
+            nx = dx / dist
+            ny = dy / dist
+            m.x += nx * overlap
+            m.y += ny * overlap
+            # clamp to screen
+            m.x = max(
+                16.0 + MONSTER_RADIUS,
+                min(
+                    float(WINDOW_WIDTH - 16 - MONSTER_RADIUS),
+                    m.x,
+                ),
+            )
+            m.y = max(
+                16.0 + MONSTER_RADIUS,
+                min(
+                    float(
+                        WINDOW_HEIGHT - 16 - MONSTER_RADIUS
+                    ),
+                    m.y,
+                ),
+            )
+
+
+def update_monsters(
+    monsters: list[Monster],
+    player: Player,
+    dt_seconds: float,
+) -> None:
+    for monster in monsters:
+        monster.update_towards(player, dt_seconds)
 
 
 def initialize_game() -> tuple[
@@ -164,10 +254,8 @@ def initialize_game() -> tuple[
     pygame.font.Font,
     list[pygame.Surface],
     int,
-    float,
-    float,
-    float,
-    list[tuple[float, float]],
+    Player,
+    list[Monster],
 ]:
     pygame.init()
 
@@ -182,9 +270,11 @@ def initialize_game() -> tuple[
     font = pygame.font.SysFont(FONT_NAME, 28)
     hint_surfaces, hint_line_height = compose_hint_surfaces(font)
 
-    player_pos_x = float(WINDOW_WIDTH // 2)
-    player_pos_y = float(WINDOW_HEIGHT // 2)
-    player_speed = float(PLAYER_BASE_SPEED)
+    player = Player(
+        float(WINDOW_WIDTH // 2),
+        float(WINDOW_HEIGHT // 2),
+        float(PLAYER_BASE_SPEED),
+    )
 
     return (
         screen,
@@ -192,9 +282,7 @@ def initialize_game() -> tuple[
         font,
         hint_surfaces,
         hint_line_height,
-        player_pos_x,
-        player_pos_y,
-        player_speed,
+        player,
         [],
     )
 
@@ -205,10 +293,8 @@ def game_loop(
     font: pygame.font.Font,
     hint_surfaces: list[pygame.Surface],
     hint_line_height: int,
-    player_pos_x: float,
-    player_pos_y: float,
-    player_speed: float,
-    monsters: list[tuple[float, float]],
+    player: Player,
+    monsters: list[Monster],
 ) -> None:
 
     time_accumulator = 0.0
@@ -223,28 +309,18 @@ def game_loop(
             return
 
         move_x, move_y = compute_move_vector()
-
-        player_pos_x, player_pos_y = update_player_position(
-            player_pos_x,
-            player_pos_y,
-            move_x,
-            move_y,
-            player_speed,
-            dt,
-        )
-
-        player_pos_x, player_pos_y = clamp_to_screen(
-            player_pos_x, player_pos_y
-        )
+        player.update(move_x, move_y, dt)
 
         while time_accumulator >= next_spawn_time:
-            monsters.append(
-                generate_monster_position(
-                    player_pos_x,
-                    player_pos_y,
-                )
-            )
+            monsters.append(generate_monster(player))
             next_spawn_time += MONSTER_SPAWN_INTERVAL_SECONDS
+
+        update_monsters(monsters, player, dt)
+
+        separate_monsters(monsters)
+        separate_player_and_monsters(player, monsters)
+
+        apply_monster_damage(player, monsters, dt)
 
         # Timer string and surface
         total_seconds = int(time_accumulator)
@@ -255,20 +331,30 @@ def game_loop(
             timer_text, True, TEXT_COLOR
         )
         timer_x = (
-            WINDOW_WIDTH // 2 - timer_surface.get_width() // 2
+            WINDOW_WIDTH // 2
+            - timer_surface.get_width() // 2
         )
         timer_y = 6
+
+        # HP string and surface
+        hp_text = f"HP: {int(player.hp)}"
+        hp_surface = font.render(hp_text, True, TEXT_COLOR)
+        hp_x = (
+            WINDOW_WIDTH - hp_surface.get_width() - 20
+        )
+        hp_pos = (hp_x, 6)
 
         render_scene(
             screen,
             hint_surfaces,
             hint_line_height,
-            player_pos_x,
-            player_pos_y,
+            player,
             time_accumulator,
             monsters,
             timer_surface,
             (timer_x, timer_y),
+            hp_surface,
+            hp_pos,
         )
 
 
@@ -279,9 +365,7 @@ def run() -> None:
         font,
         hint_surfaces,
         hint_line_height,
-        player_pos_x,
-        player_pos_y,
-        player_speed,
+        player,
         monsters,
     ) = initialize_game()
 
@@ -291,9 +375,7 @@ def run() -> None:
         font,
         hint_surfaces,
         hint_line_height,
-        player_pos_x,
-        player_pos_y,
-        player_speed,
+        player,
         monsters,
     )
 
