@@ -1,5 +1,6 @@
 import sys
 import math
+import random
 import pygame
 
 from config import (
@@ -9,10 +10,15 @@ from config import (
     BACKGROUND_COLOR,
     ACCENT_COLOR,
     HINT_TEXT_COLOR,
+    TEXT_COLOR,
     FONT_NAME,
     WINDOW_CAPTION,
     HINT_TEXT,
     PLAYER_BASE_SPEED,
+    MONSTER_COLOR,
+    MONSTER_RADIUS,
+    MONSTER_SPAWN_INTERVAL_SECONDS,
+    MONSTER_MIN_DISTANCE_FROM_PLAYER,
 )
 
 
@@ -92,8 +98,13 @@ def render_scene(
     player_x: float,
     player_y: float,
     time_seconds: float,
+    monsters: list[tuple[float, float]],
+    timer_surface: pygame.Surface,
+    timer_pos: tuple[int, int],
 ) -> None:
     screen.fill(BACKGROUND_COLOR)
+
+    screen.blit(timer_surface, timer_pos)
 
     y = 20
     for surf in hint_surfaces:
@@ -116,17 +127,47 @@ def render_scene(
         12,
     )
 
+    for m_x, m_y in monsters:
+        pygame.draw.circle(
+            screen,
+            MONSTER_COLOR,
+            (int(m_x), int(m_y)),
+            MONSTER_RADIUS,
+        )
+
     pygame.display.flip()
+
+
+def generate_monster_position(
+    player_x: float,
+    player_y: float,
+) -> tuple[float, float]:
+    # Try random positions away from the player
+    for _ in range(32):
+        x = random.uniform(16.0, float(WINDOW_WIDTH - 16))
+        y = random.uniform(16.0, float(WINDOW_HEIGHT - 16))
+        if (
+            math.hypot(x - player_x, y - player_y)
+            >= MONSTER_MIN_DISTANCE_FROM_PLAYER
+        ):
+            return x, y
+
+    # Fallback: place near a corner far from player
+    x = 16.0 if player_x > WINDOW_WIDTH / 2 else float(WINDOW_WIDTH - 16)
+    y = 16.0 if player_y > WINDOW_HEIGHT / 2 else float(WINDOW_HEIGHT - 16)
+    return x, y
 
 
 def initialize_game() -> tuple[
     pygame.Surface,
     pygame.time.Clock,
+    pygame.font.Font,
     list[pygame.Surface],
     int,
     float,
     float,
     float,
+    list[tuple[float, float]],
 ]:
     pygame.init()
 
@@ -148,25 +189,30 @@ def initialize_game() -> tuple[
     return (
         screen,
         clock,
+        font,
         hint_surfaces,
         hint_line_height,
         player_pos_x,
         player_pos_y,
         player_speed,
+        [],
     )
 
 
 def game_loop(
     screen: pygame.Surface,
     clock: pygame.time.Clock,
+    font: pygame.font.Font,
     hint_surfaces: list[pygame.Surface],
     hint_line_height: int,
     player_pos_x: float,
     player_pos_y: float,
     player_speed: float,
+    monsters: list[tuple[float, float]],
 ) -> None:
 
     time_accumulator = 0.0
+    next_spawn_time = MONSTER_SPAWN_INTERVAL_SECONDS
 
     while True:
         dt_ms = clock.tick(FPS)
@@ -191,6 +237,28 @@ def game_loop(
             player_pos_x, player_pos_y
         )
 
+        while time_accumulator >= next_spawn_time:
+            monsters.append(
+                generate_monster_position(
+                    player_pos_x,
+                    player_pos_y,
+                )
+            )
+            next_spawn_time += MONSTER_SPAWN_INTERVAL_SECONDS
+
+        # Timer string and surface
+        total_seconds = int(time_accumulator)
+        minutes = total_seconds // 60
+        seconds = total_seconds % 60
+        timer_text = f"{minutes:02d}:{seconds:02d}"
+        timer_surface = font.render(
+            timer_text, True, TEXT_COLOR
+        )
+        timer_x = (
+            WINDOW_WIDTH // 2 - timer_surface.get_width() // 2
+        )
+        timer_y = 6
+
         render_scene(
             screen,
             hint_surfaces,
@@ -198,6 +266,9 @@ def game_loop(
             player_pos_x,
             player_pos_y,
             time_accumulator,
+            monsters,
+            timer_surface,
+            (timer_x, timer_y),
         )
 
 
@@ -205,21 +276,25 @@ def run() -> None:
     (
         screen,
         clock,
+        font,
         hint_surfaces,
         hint_line_height,
         player_pos_x,
         player_pos_y,
         player_speed,
+        monsters,
     ) = initialize_game()
 
     game_loop(
         screen,
         clock,
+        font,
         hint_surfaces,
         hint_line_height,
         player_pos_x,
         player_pos_y,
         player_speed,
+        monsters,
     )
 
     pygame.quit()
