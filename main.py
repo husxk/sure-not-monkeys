@@ -18,6 +18,9 @@ from config import (
     MONSTER_COLOR,
     MONSTER_RADIUS,
     MONSTER_SPAWN_INTERVAL_SECONDS,
+    MONSTER_SPAWN_INTERVAL_MIN_SECONDS,
+    MONSTER_SPAWN_INTERVAL_STEP_SECONDS,
+    MONSTER_SPAWN_SCALING_PERIOD_SECONDS,
     MONSTER_MIN_DISTANCE_FROM_PLAYER,
     MONSTER_SPEED,
     MONSTER_DAMAGE_DISTANCE,
@@ -257,6 +260,20 @@ def update_monsters(
         monster.update_towards(player, dt_seconds)
 
 
+def compute_spawn_interval(elapsed_seconds: float) -> float:
+    # Decrease interval every full minute by a fixed step,
+    # down to a minimum cap.
+    period = float(MONSTER_SPAWN_SCALING_PERIOD_SECONDS)
+    minutes = int(elapsed_seconds // period)
+    interval = (
+        MONSTER_SPAWN_INTERVAL_SECONDS
+        - minutes * MONSTER_SPAWN_INTERVAL_STEP_SECONDS
+    )
+    if interval < MONSTER_SPAWN_INTERVAL_MIN_SECONDS:
+        interval = MONSTER_SPAWN_INTERVAL_MIN_SECONDS
+    return float(interval)
+
+
 def initialize_game() -> tuple[
     pygame.Surface,
     pygame.time.Clock,
@@ -310,7 +327,7 @@ def game_loop(
 ) -> None:
 
     time_accumulator = 0.0
-    next_spawn_time = MONSTER_SPAWN_INTERVAL_SECONDS
+    next_spawn_time = compute_spawn_interval(0.0)
     next_shot_time = 0.0
 
     while True:
@@ -332,7 +349,9 @@ def game_loop(
 
         while time_accumulator >= next_spawn_time:
             monsters.append(generate_monster(player))
-            next_spawn_time += MONSTER_SPAWN_INTERVAL_SECONDS
+            next_spawn_time += compute_spawn_interval(
+                time_accumulator
+            )
 
         update_monsters(monsters, player, dt)
 
