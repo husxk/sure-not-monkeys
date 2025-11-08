@@ -32,6 +32,7 @@ from config import (
     BULLET_RADIUS,
     BULLET_COOLDOWN_SECONDS,
     BULLET_DAMAGE,
+    MONSTER_XP_ON_KILL,
 )
 from player import Player
 from monster import Monster
@@ -97,11 +98,17 @@ def render_scene(
     timer_pos: tuple[int, int],
     hp_surface: pygame.Surface,
     hp_pos: tuple[int, int],
+    lvl_surface: pygame.Surface,
+    lvl_pos: tuple[int, int],
+    xp_surface: pygame.Surface,
+    xp_pos: tuple[int, int],
 ) -> None:
     screen.fill(BACKGROUND_COLOR)
 
     screen.blit(timer_surface, timer_pos)
     screen.blit(hp_surface, hp_pos)
+    screen.blit(lvl_surface, lvl_pos)
+    screen.blit(xp_surface, xp_pos)
 
     y = 20
     for surf in hint_surfaces:
@@ -394,9 +401,13 @@ def game_loop(
                     math.hypot(m.x - b.x, m.y - b.y)
                     <= (MONSTER_RADIUS + BULLET_RADIUS)
                 ):
-                    m.take_damage(float(BULLET_DAMAGE))
+                    m.take_damage(
+                        player.get_bullet_damage()
+                    )
                     bullets.remove(b)
                     hit = True
+                    if m.hp <= 0.0:
+                        player.gain_xp(float(MONSTER_XP_ON_KILL))
                     break
             if m.hp > 0.0:
                 new_monsters.append(m)
@@ -419,10 +430,30 @@ def game_loop(
         # HP string and surface
         hp_text = f"HP: {int(player.hp)}"
         hp_surface = font.render(hp_text, True, TEXT_COLOR)
+        line_h = font.get_linesize()
         hp_x = (
             WINDOW_WIDTH - hp_surface.get_width() - 20
         )
-        hp_pos = (hp_x, 6)
+        hp_pos = (hp_x, 6 + line_h + 2)
+
+        # Level above HP
+        lvl_text = f"LVL: {player.level}"
+        lvl_surface = font.render(lvl_text, True, TEXT_COLOR)
+        lvl_x = (
+            WINDOW_WIDTH - lvl_surface.get_width() - 20
+        )
+        lvl_pos = (lvl_x, 6)
+
+        # XP below HP
+        xp_text = (
+            f"XP: {int(player.xp)}/"
+            f"{int(player.xp_to_next)}"
+        )
+        xp_surface = font.render(xp_text, True, TEXT_COLOR)
+        xp_x = (
+            WINDOW_WIDTH - xp_surface.get_width() - 20
+        )
+        xp_pos = (xp_x, hp_pos[1] + line_h + 2)
 
         render_scene(
             screen,
@@ -436,6 +467,10 @@ def game_loop(
             (timer_x, timer_y),
             hp_surface,
             hp_pos,
+            lvl_surface,
+            lvl_pos,
+            xp_surface,
+            xp_pos,
         )
 
 

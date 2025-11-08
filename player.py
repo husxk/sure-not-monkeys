@@ -8,6 +8,12 @@ from config import (
     PLAYER_RADIUS,
     PLAYER_MAX_HP,
     TEXT_COLOR,
+    LEVEL_UP_HP_BONUS,
+    BULLET_DAMAGE,
+    BULLET_DAMAGE_PER_LEVEL,
+    PLAYER_XP_BASE,
+    PLAYER_XP_MULTIPLIER,
+    PLAYER_MAX_LEVEL,
 )
 
 
@@ -19,6 +25,9 @@ class Player:
         self.hp = float(PLAYER_MAX_HP)
         self.face_dx = 1.0
         self.face_dy = 0.0
+        self.level = 1
+        self.xp = 0.0
+        self.xp_to_next = float(PLAYER_XP_BASE)
 
     def take_damage(self, amount: float) -> None:
         if amount <= 0:
@@ -44,6 +53,12 @@ class Player:
             self.y + self.face_dy * offset,
         )
 
+    def get_bullet_damage(self) -> float:
+        return float(
+            BULLET_DAMAGE
+            + BULLET_DAMAGE_PER_LEVEL * max(0, self.level - 1)
+        )
+
     def update_facing_towards(
         self, target_x: float, target_y: float
     ) -> None:
@@ -53,6 +68,27 @@ class Player:
         if dist > 1e-4:
             self.face_dx = dx / dist
             self.face_dy = dy / dist
+
+    def gain_xp(self, amount: float) -> None:
+        if amount <= 0:
+            return
+        self.xp += amount
+        while self.xp >= self.xp_to_next:
+            if self.level >= int(PLAYER_MAX_LEVEL):
+                # cap reached: stop leveling further
+                self.xp = min(self.xp, self.xp_to_next - 1.0)
+                break
+            self.xp -= self.xp_to_next
+            self.level += 1
+            # increase requirement modestly per level
+            self.xp_to_next = float(
+                int(self.xp_to_next * float(PLAYER_XP_MULTIPLIER))
+            )
+            # heal on level up
+            self.hp = min(
+                float(PLAYER_MAX_HP),
+                self.hp + float(LEVEL_UP_HP_BONUS),
+            )
 
     def _clamp_to_screen(self) -> None:
         self.x = max(16.0, min(float(WINDOW_WIDTH - 16), self.x))
