@@ -25,9 +25,14 @@ from config import (
     MONSTER_SEPARATION_PASSES,
     MONSTER_SEPARATION_PADDING,
     PLAYER_MONSTER_PADDING,
+    BULLET_SPEED,
+    BULLET_RADIUS,
+    BULLET_COOLDOWN_SECONDS,
+    BULLET_DAMAGE,
 )
 from player import Player
 from monster import Monster
+from bullet import Bullet
 
 
 def poll_quit_requested() -> bool:
@@ -84,6 +89,7 @@ def render_scene(
     player: Player,
     time_seconds: float,
     monsters: list[Monster],
+    bullets: list[Bullet],
     timer_surface: pygame.Surface,
     timer_pos: tuple[int, int],
     hp_surface: pygame.Surface,
@@ -101,6 +107,9 @@ def render_scene(
 
     for monster in monsters:
         monster.draw(screen)
+
+    for bullet in bullets:
+        bullet.draw(screen)
 
     player.draw(screen, time_seconds)
 
@@ -256,6 +265,7 @@ def initialize_game() -> tuple[
     int,
     Player,
     list[Monster],
+    list[Bullet],
 ]:
     pygame.init()
 
@@ -284,6 +294,7 @@ def initialize_game() -> tuple[
         hint_line_height,
         player,
         [],
+        [],
     )
 
 
@@ -295,10 +306,12 @@ def game_loop(
     hint_line_height: int,
     player: Player,
     monsters: list[Monster],
+    bullets: list[Bullet],
 ) -> None:
 
     time_accumulator = 0.0
     next_spawn_time = MONSTER_SPAWN_INTERVAL_SECONDS
+    next_shot_time = 0.0
 
     while True:
         dt_ms = clock.tick(FPS)
@@ -311,6 +324,12 @@ def game_loop(
         move_x, move_y = compute_move_vector()
         player.update(move_x, move_y, dt)
 
+        # Face towards mouse cursor
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        player.update_facing_towards(
+            float(mouse_x), float(mouse_y)
+        )
+
         while time_accumulator >= next_spawn_time:
             monsters.append(generate_monster(player))
             next_spawn_time += MONSTER_SPAWN_INTERVAL_SECONDS
@@ -321,6 +340,48 @@ def game_loop(
         separate_player_and_monsters(player, monsters)
 
         apply_monster_damage(player, monsters, dt)
+
+        # Shooting continuously from facing direction
+        while time_accumulator >= next_shot_time:
+            fx, fy = player.get_facing()
+            if not fx and not fy:
+                fx, fy = 1.0, 0.0
+            vx = fx * BULLET_SPEED
+            vy = fy * BULLET_SPEED
+            mx, my = player.get_muzzle_position()
+            bullets.append(Bullet(mx, my, vx, vy))
+            next_shot_time += BULLET_COOLDOWN_SECONDS
+
+        # Update bullets and remove off-screen
+        alive_bullets: list[Bullet] = []
+        for b in bullets:
+            b.update(dt)
+            if (
+                b.x < -BULLET_RADIUS
+                or b.x > WINDOW_WIDTH + BULLET_RADIUS
+                or b.y < -BULLET_RADIUS
+                or b.y > WINDOW_HEIGHT + BULLET_RADIUS
+            ):
+                continue
+            alive_bullets.append(b)
+        bullets[:] = alive_bullets
+
+        # Bullet collisions
+        new_monsters: list[Monster] = []
+        for m in monsters:
+            hit = False
+            for b in list(bullets):
+                if (
+                    math.hypot(m.x - b.x, m.y - b.y)
+                    <= (MONSTER_RADIUS + BULLET_RADIUS)
+                ):
+                    m.take_damage(float(BULLET_DAMAGE))
+                    bullets.remove(b)
+                    hit = True
+                    break
+            if m.hp > 0.0:
+                new_monsters.append(m)
+        monsters[:] = new_monsters
 
         # Timer string and surface
         total_seconds = int(time_accumulator)
@@ -351,6 +412,7 @@ def game_loop(
             player,
             time_accumulator,
             monsters,
+            bullets,
             timer_surface,
             (timer_x, timer_y),
             hp_surface,
@@ -367,6 +429,7 @@ def run() -> None:
         hint_line_height,
         player,
         monsters,
+        bullets,
     ) = initialize_game()
 
     game_loop(
@@ -377,6 +440,7 @@ def run() -> None:
         hint_line_height,
         player,
         monsters,
+        bullets,
     )
 
     pygame.quit()

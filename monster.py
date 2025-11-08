@@ -6,6 +6,7 @@ from config import (
     WINDOW_HEIGHT,
     MONSTER_COLOR,
     MONSTER_RADIUS,
+    MONSTER_MAX_HP,
 )
 
 
@@ -14,6 +15,12 @@ class Monster:
         self.x = x
         self.y = y
         self.speed = speed
+        self.hp = float(MONSTER_MAX_HP)
+
+    def take_damage(self, amount: float) -> None:
+        if amount <= 0:
+            return
+        self.hp = max(0.0, self.hp - amount)
 
     def update_towards(self, player, dt_seconds: float) -> None:
         dx = player.x - self.x
