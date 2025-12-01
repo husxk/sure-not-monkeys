@@ -9,18 +9,16 @@ from monster import Monster
 from bullet import Bullet
 
 
-def poll_quit_requested() -> bool:
+def handle_frame_events() -> tuple[bool, bool]:
+    quit_requested = False
+    pause_requested = False
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            return True
-
-        if (
-            event.type == pygame.KEYDOWN
-            and event.key == pygame.K_ESCAPE
-        ):
-
-            return True
-    return False
+            quit_requested = True
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                pause_requested = True
+    return quit_requested, pause_requested
 
 
 def compute_move_vector() -> tuple[float, float]:
@@ -96,6 +94,39 @@ def show_main_menu(
             px = WINDOW_WIDTH // 2 - prompt.get_width() // 2
             py = ty + title.get_height() + 28
             screen.blit(prompt, (px, py))
+        pygame.display.flip()
+
+
+def show_pause_menu(
+    screen: pygame.Surface,
+    clock: pygame.time.Clock,
+    font: pygame.font.Font,
+) -> str:
+    title = font.render("Paused", True, TEXT_COLOR)
+    opt_continue = font.render("ENTER: Continue", True, TEXT_COLOR)
+    opt_main = font.render("ESC: Main Menu", True, TEXT_COLOR)
+    while True:
+        dt_ms = clock.tick(FPS)
+        _ = dt_ms
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "exit"
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    return "continue"
+                if event.key == pygame.K_ESCAPE:
+                    return "main_menu"
+
+        screen.fill(BACKGROUND_COLOR)
+        cx = WINDOW_WIDTH // 2
+        cy = WINDOW_HEIGHT // 2
+        screen.blit(title, (cx - title.get_width() // 2, cy - 60))
+        screen.blit(
+            opt_continue, (cx - opt_continue.get_width() // 2, cy)
+        )
+        screen.blit(
+            opt_main, (cx - opt_main.get_width() // 2, cy + 40)
+        )
         pygame.display.flip()
 
 
@@ -397,7 +428,7 @@ def game_loop(
     monsters: list[Monster],
     bullets: list[Bullet],
     next_boss_level: int,
-) -> None:
+) -> str:
 
     time_accumulator = 0.0
     next_spawn_time = compute_spawn_interval(0.0)
@@ -409,8 +440,15 @@ def game_loop(
         dt = dt_ms / 1000.0
         time_accumulator += dt
 
-        if poll_quit_requested():
-            return
+        quit_requested, pause_requested = handle_frame_events()
+        if quit_requested:
+            return "exit"
+        if pause_requested:
+            pause_result = show_pause_menu(screen, clock, font)
+            if pause_result == "exit":
+                return "exit"
+            if pause_result == "main_menu":
+                return "main_menu"
 
         move_x, move_y = compute_move_vector()
         player.update(move_x, move_y, dt)
@@ -578,33 +616,36 @@ def run() -> None:
     pygame.display.set_caption(WINDOW_CAPTION)
     clock = pygame.time.Clock()
 
-    if not show_main_menu(screen, clock):
-        pygame.quit()
-        sys.exit(0)
+    while True:
+        if not show_main_menu(screen, clock):
+            break
 
-    (
-        screen,
-        clock,
-        font,
-        hint_surfaces,
-        hint_line_height,
-        player,
-        monsters,
-        bullets,
-        next_boss_level,
-    ) = initialize_game(screen, clock)
+        (
+            screen,
+            clock,
+            font,
+            hint_surfaces,
+            hint_line_height,
+            player,
+            monsters,
+            bullets,
+            next_boss_level,
+        ) = initialize_game(screen, clock)
 
-    game_loop(
-        screen,
-        clock,
-        font,
-        hint_surfaces,
-        hint_line_height,
-        player,
-        monsters,
-        bullets,
-        next_boss_level,
-    )
+        result = game_loop(
+            screen,
+            clock,
+            font,
+            hint_surfaces,
+            hint_line_height,
+            player,
+            monsters,
+            bullets,
+            next_boss_level,
+        )
+        if result == "exit":
+            break
+        # If main_menu requested, loop to show main menu again
 
     pygame.quit()
     sys.exit(0)
