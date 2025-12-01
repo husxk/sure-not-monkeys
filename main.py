@@ -130,7 +130,7 @@ def generate_monster(player: Player) -> Monster:
 def generate_boss(player: Player) -> Monster:
     # Integer scale with player level: floor(level / step), min 1
     scale = max(1, int(player.level) // int(BOSS_SPAWN_LEVEL_STEP))
-    scaled_radius = float(BOSS_RADIUS) * float(scale)
+    base_radius = float(BOSS_RADIUS)
     scaled_hp = float(BOSS_MAX_HP) * float(scale)
     # Spawn far from player near edges
     for _ in range(32):
@@ -144,7 +144,7 @@ def generate_boss(player: Player) -> Monster:
                 x,
                 y,
                 float(BOSS_SPEED),
-                scaled_radius,
+                base_radius,
                 BOSS_COLOR,
                 scaled_hp,
             )
@@ -155,7 +155,7 @@ def generate_boss(player: Player) -> Monster:
         x,
         y,
         float(BOSS_SPEED),
-        scaled_radius,
+        base_radius,
         BOSS_COLOR,
         scaled_hp,
     )
