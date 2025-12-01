@@ -7,6 +7,7 @@ from config import *
 from player import Player
 from monster import Monster
 from bullet import Bullet
+from item import Item
 
 
 def handle_frame_events() -> tuple[bool, bool]:
@@ -138,6 +139,7 @@ def render_scene(
     time_seconds: float,
     monsters: list[Monster],
     bullets: list[Bullet],
+    items: list[Item],
     timer_surface: pygame.Surface,
     timer_pos: tuple[int, int],
     hp_surface: pygame.Surface,
@@ -161,6 +163,9 @@ def render_scene(
 
     for monster in monsters:
         monster.draw(screen)
+
+    for item in items:
+        item.draw(screen)
 
     for bullet in bullets:
         bullet.draw(screen)
@@ -392,6 +397,7 @@ def initialize_game(
     Player,
     list[Monster],
     list[Bullet],
+    list[Item],
     int,
 ]:
     font = pygame.font.SysFont(FONT_NAME, 28)
@@ -414,6 +420,7 @@ def initialize_game(
         player,
         [],
         [],
+        [],
         int(BOSS_SPAWN_LEVEL_STEP),
     )
 
@@ -427,6 +434,7 @@ def game_loop(
     player: Player,
     monsters: list[Monster],
     bullets: list[Bullet],
+    items: list[Item],
     next_boss_level: int,
 ) -> str:
 
@@ -544,10 +552,25 @@ def game_loop(
                     hit = True
                     if m.hp <= 0.0:
                         player.gain_xp(float(MONSTER_XP_ON_KILL))
+                        if random.random() < float(DROP_CHANCE):
+                            items.append(Item(m.x, m.y))
                     break
             if m.hp > 0.0:
                 new_monsters.append(m)
         monsters[:] = new_monsters
+
+        # Item pickups
+        kept_items: list[Item] = []
+        for it in items:
+            dist = math.hypot(player.x - it.x, player.y - it.y)
+            if dist <= float(PLAYER_RADIUS + ITEM_SIZE):
+                player.hp = min(
+                    float(PLAYER_MAX_HP),
+                    player.hp + float(DROP_HEAL_AMOUNT),
+                )
+            else:
+                kept_items.append(it)
+        items[:] = kept_items
 
         # Timer string and surface
         total_seconds = int(time_accumulator)
@@ -599,6 +622,7 @@ def game_loop(
             time_accumulator,
             monsters,
             bullets,
+            items,
             timer_surface,
             (timer_x, timer_y),
             hp_surface,
@@ -629,8 +653,9 @@ def run() -> None:
             player,
             monsters,
             bullets,
+        items,
             next_boss_level,
-        ) = initialize_game(screen, clock)
+    ) = initialize_game(screen, clock)
 
         result = game_loop(
             screen,
@@ -641,6 +666,7 @@ def run() -> None:
             player,
             monsters,
             bullets,
+            items,
             next_boss_level,
         )
         if result == "exit":
