@@ -4,18 +4,26 @@ import pygame
 from config import (
     WINDOW_WIDTH,
     WINDOW_HEIGHT,
-    MONSTER_COLOR,
     MONSTER_RADIUS,
-    MONSTER_MAX_HP,
 )
 
 
 class Monster:
-    def __init__(self, x: float, y: float, speed: float) -> None:
+    def __init__(
+        self,
+        x: float,
+        y: float,
+        speed: float,
+        radius: float,
+        color: tuple[int, int, int],
+        max_hp: float,
+    ) -> None:
         self.x = x
         self.y = y
         self.speed = speed
-        self.hp = float(MONSTER_MAX_HP)
+        self.radius = float(radius)
+        self.color = color
+        self.hp = float(max_hp)
 
     def take_damage(self, amount: float) -> None:
         if amount <= 0:
@@ -30,18 +38,27 @@ class Monster:
             self.x += (dx / dist) * self.speed * dt_seconds
             self.y += (dy / dist) * self.speed * dt_seconds
         self.x = max(
-            16.0 + MONSTER_RADIUS,
-            min(float(WINDOW_WIDTH - 16 - MONSTER_RADIUS), self.x),
+            16.0 + self.radius,
+            min(float(WINDOW_WIDTH - 16 - self.radius), self.x),
         )
         self.y = max(
-            16.0 + MONSTER_RADIUS,
-            min(float(WINDOW_HEIGHT - 16 - MONSTER_RADIUS), self.y),
+            16.0 + self.radius,
+            min(float(WINDOW_HEIGHT - 16 - self.radius), self.y),
         )
 
     def draw(self, screen: pygame.Surface) -> None:
         pygame.draw.circle(
             screen,
-            MONSTER_COLOR,
+            self.color,
             (int(self.x), int(self.y)),
-            MONSTER_RADIUS,
+            int(self.radius),
         )
+        # If larger than normal, draw an outline ring
+        if self.radius > float(MONSTER_RADIUS):
+            pygame.draw.circle(
+                screen,
+                (255, 255, 255),
+                (int(self.x), int(self.y)),
+                int(self.radius) + 4,
+                width=2,
+            )

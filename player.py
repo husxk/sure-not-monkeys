@@ -1,20 +1,7 @@
 import math
 import pygame
 
-from config import (
-    WINDOW_WIDTH,
-    WINDOW_HEIGHT,
-    ACCENT_COLOR,
-    PLAYER_RADIUS,
-    PLAYER_MAX_HP,
-    TEXT_COLOR,
-    LEVEL_UP_HP_BONUS,
-    BULLET_DAMAGE,
-    BULLET_DAMAGE_PER_LEVEL,
-    PLAYER_XP_BASE,
-    PLAYER_XP_MULTIPLIER,
-    PLAYER_MAX_LEVEL,
-)
+from config import *
 
 
 class Player:

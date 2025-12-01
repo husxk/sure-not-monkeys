@@ -3,37 +3,7 @@ import math
 import random
 import pygame
 
-from config import (
-    WINDOW_WIDTH,
-    WINDOW_HEIGHT,
-    FPS,
-    BACKGROUND_COLOR,
-    HINT_TEXT_COLOR,
-    TEXT_COLOR,
-    FONT_NAME,
-    WINDOW_CAPTION,
-    HINT_TEXT,
-    PLAYER_BASE_SPEED,
-    PLAYER_RADIUS,
-    MONSTER_COLOR,
-    MONSTER_RADIUS,
-    MONSTER_SPAWN_INTERVAL_SECONDS,
-    MONSTER_SPAWN_INTERVAL_MIN_SECONDS,
-    MONSTER_SPAWN_INTERVAL_STEP_SECONDS,
-    MONSTER_SPAWN_SCALING_PERIOD_SECONDS,
-    MONSTER_MIN_DISTANCE_FROM_PLAYER,
-    MONSTER_SPEED,
-    MONSTER_DAMAGE_DISTANCE,
-    MONSTER_DAMAGE_PER_SECOND,
-    MONSTER_SEPARATION_PASSES,
-    MONSTER_SEPARATION_PADDING,
-    PLAYER_MONSTER_PADDING,
-    BULLET_SPEED,
-    BULLET_RADIUS,
-    BULLET_COOLDOWN_SECONDS,
-    BULLET_DAMAGE,
-    MONSTER_XP_ON_KILL,
-)
+from config import *
 from player import Player
 from monster import Monster
 from bullet import Bullet
@@ -135,12 +105,60 @@ def generate_monster(player: Player) -> Monster:
             math.hypot(x - player.x, y - player.y)
             >= MONSTER_MIN_DISTANCE_FROM_PLAYER
         ):
-            return Monster(x, y, float(MONSTER_SPEED))
+            return Monster(
+                x,
+                y,
+                float(MONSTER_SPEED),
+                float(MONSTER_RADIUS),
+                MONSTER_COLOR,
+                float(MONSTER_MAX_HP),
+            )
 
     # Fallback: place near a corner far from player
     x = 16.0 if player.x > WINDOW_WIDTH / 2 else float(WINDOW_WIDTH - 16)
     y = 16.0 if player.y > WINDOW_HEIGHT / 2 else float(WINDOW_HEIGHT - 16)
-    return Monster(x, y, float(MONSTER_SPEED))
+    return Monster(
+        x,
+        y,
+        float(MONSTER_SPEED),
+        float(MONSTER_RADIUS),
+        MONSTER_COLOR,
+        float(MONSTER_MAX_HP),
+    )
+
+
+def generate_boss(player: Player) -> Monster:
+    # Integer scale with player level: floor(level / step), min 1
+    scale = max(1, int(player.level) // int(BOSS_SPAWN_LEVEL_STEP))
+    scaled_radius = float(BOSS_RADIUS) * float(scale)
+    scaled_hp = float(BOSS_MAX_HP) * float(scale)
+    # Spawn far from player near edges
+    for _ in range(32):
+        x = random.uniform(16.0, float(WINDOW_WIDTH - 16))
+        y = random.uniform(16.0, float(WINDOW_HEIGHT - 16))
+        if (
+            math.hypot(x - player.x, y - player.y)
+            >= MONSTER_MIN_DISTANCE_FROM_PLAYER
+        ):
+            return Monster(
+                x,
+                y,
+                float(BOSS_SPEED),
+                scaled_radius,
+                BOSS_COLOR,
+                scaled_hp,
+            )
+    # Fallback: corner
+    x = 16.0 if player.x > WINDOW_WIDTH / 2 else float(WINDOW_WIDTH - 16)
+    y = 16.0 if player.y > WINDOW_HEIGHT / 2 else float(WINDOW_HEIGHT - 16)
+    return Monster(
+        x,
+        y,
+        float(BOSS_SPEED),
+        scaled_radius,
+        BOSS_COLOR,
+        scaled_hp,
+    )
 
 
 def apply_monster_damage(
@@ -150,9 +168,8 @@ def apply_monster_damage(
 ) -> None:
     damage_total = 0.0
     for m in monsters:
-        if (
-            math.hypot(player.x - m.x, player.y - m.y)
-            <= MONSTER_DAMAGE_DISTANCE
+        if math.hypot(player.x - m.x, player.y - m.y) <= (
+            float(PLAYER_RADIUS) + float(m.radius) + PLAYER_MONSTER_PADDING
         ):
             damage_total += MONSTER_DAMAGE_PER_SECOND * dt_seconds
     if damage_total > 0.0:
@@ -162,7 +179,7 @@ def apply_monster_damage(
 def separate_monsters(monsters: list[Monster]) -> None:
     if len(monsters) <= 1:
         return
-    min_dist = float(MONSTER_RADIUS * 2) + MONSTER_SEPARATION_PADDING
+    # Per-pair min distance using each entity's radius
     for _ in range(MONSTER_SEPARATION_PASSES):
         for i in range(len(monsters)):
             mi = monsters[i]
@@ -174,8 +191,13 @@ def separate_monsters(monsters: list[Monster]) -> None:
                 if dist < 1e-6:
                     # tiny nudge to avoid zero division
                     dx, dy, dist = 1.0, 0.0, 1.0
+                min_dist = (
+                    float(mi.radius)
+                    + float(mj.radius)
+                    + MONSTER_SEPARATION_PADDING
+                )
                 if dist < min_dist:
-                    overlap = (min_dist - dist) * 0.5
+                    overlap = float(min_dist - dist) * 0.5
                     nx = dx / dist
                     ny = dy / dist
                     mi.x -= nx * overlap
@@ -184,37 +206,37 @@ def separate_monsters(monsters: list[Monster]) -> None:
                     mj.y += ny * overlap
                     # clamp to screen
                     mi.x = max(
-                        16.0 + MONSTER_RADIUS,
+                        16.0 + float(mi.radius),
                         min(
                             float(
-                                WINDOW_WIDTH - 16 - MONSTER_RADIUS
+                                WINDOW_WIDTH - 16 - float(mi.radius)
                             ),
                             mi.x,
                         ),
                     )
                     mi.y = max(
-                        16.0 + MONSTER_RADIUS,
+                        16.0 + float(mi.radius),
                         min(
                             float(
-                                WINDOW_HEIGHT - 16 - MONSTER_RADIUS
+                                WINDOW_HEIGHT - 16 - float(mi.radius)
                             ),
                             mi.y,
                         ),
                     )
                     mj.x = max(
-                        16.0 + MONSTER_RADIUS,
+                        16.0 + float(mj.radius),
                         min(
                             float(
-                                WINDOW_WIDTH - 16 - MONSTER_RADIUS
+                                WINDOW_WIDTH - 16 - float(mj.radius)
                             ),
                             mj.x,
                         ),
                     )
                     mj.y = max(
-                        16.0 + MONSTER_RADIUS,
+                        16.0 + float(mj.radius),
                         min(
                             float(
-                                WINDOW_HEIGHT - 16 - MONSTER_RADIUS
+                                WINDOW_HEIGHT - 16 - float(mj.radius)
                             ),
                             mj.y,
                         ),
@@ -225,33 +247,36 @@ def separate_player_and_monsters(
     player: Player,
     monsters: list[Monster],
 ) -> None:
-    min_dist = float(PLAYER_RADIUS + MONSTER_RADIUS) \
-        + PLAYER_MONSTER_PADDING
     for m in monsters:
         dx = m.x - player.x
         dy = m.y - player.y
         dist = math.hypot(dx, dy)
         if dist < 1e-6:
             dx, dy, dist = 1.0, 0.0, 1.0
+        min_dist = (
+            float(PLAYER_RADIUS)
+            + float(m.radius)
+            + PLAYER_MONSTER_PADDING
+        )
         if dist < min_dist:
-            overlap = min_dist - dist
+            overlap = float(min_dist - dist)
             nx = dx / dist
             ny = dy / dist
             m.x += nx * overlap
             m.y += ny * overlap
             # clamp to screen
             m.x = max(
-                16.0 + MONSTER_RADIUS,
+                16.0 + float(m.radius),
                 min(
-                    float(WINDOW_WIDTH - 16 - MONSTER_RADIUS),
+                    float(WINDOW_WIDTH - 16 - float(m.radius)),
                     m.x,
                 ),
             )
             m.y = max(
-                16.0 + MONSTER_RADIUS,
+                16.0 + float(m.radius),
                 min(
                     float(
-                        WINDOW_HEIGHT - 16 - MONSTER_RADIUS
+                        WINDOW_HEIGHT - 16 - float(m.radius)
                     ),
                     m.y,
                 ),
@@ -290,6 +315,7 @@ def initialize_game() -> tuple[
     Player,
     list[Monster],
     list[Bullet],
+    int,
 ]:
     pygame.init()
 
@@ -319,6 +345,7 @@ def initialize_game() -> tuple[
         player,
         [],
         [],
+        int(BOSS_SPAWN_LEVEL_STEP),
     )
 
 
@@ -331,6 +358,7 @@ def game_loop(
     player: Player,
     monsters: list[Monster],
     bullets: list[Bullet],
+    next_boss_level: int,
 ) -> None:
 
     time_accumulator = 0.0
@@ -359,6 +387,11 @@ def game_loop(
             next_spawn_time += compute_spawn_interval(
                 time_accumulator
             )
+
+        # Boss spawn on level milestones
+        if player.level >= next_boss_level:
+            monsters.append(generate_boss(player))
+            next_boss_level += int(BOSS_SPAWN_LEVEL_STEP)
 
         update_monsters(monsters, player, dt)
 
@@ -399,7 +432,7 @@ def game_loop(
             for b in list(bullets):
                 if (
                     math.hypot(m.x - b.x, m.y - b.y)
-                    <= (MONSTER_RADIUS + BULLET_RADIUS)
+                    <= (float(m.radius) + BULLET_RADIUS)
                 ):
                     m.take_damage(
                         player.get_bullet_damage()
@@ -484,6 +517,7 @@ def run() -> None:
         player,
         monsters,
         bullets,
+        next_boss_level,
     ) = initialize_game()
 
     game_loop(
@@ -495,6 +529,7 @@ def run() -> None:
         player,
         monsters,
         bullets,
+        next_boss_level,
     )
 
     pygame.quit()
