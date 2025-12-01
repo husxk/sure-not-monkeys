@@ -364,6 +364,7 @@ def game_loop(
     time_accumulator = 0.0
     next_spawn_time = compute_spawn_interval(0.0)
     next_shot_time = 0.0
+    next_volley_time = 0.0
 
     while True:
         dt_ms = clock.tick(FPS)
@@ -410,6 +411,32 @@ def game_loop(
             mx, my = player.get_muzzle_position()
             bullets.append(Bullet(mx, my, vx, vy))
             next_shot_time += BULLET_COOLDOWN_SECONDS
+
+        # Volley attack on its own cooldown
+        while time_accumulator >= next_volley_time:
+            fx, fy = player.get_facing()
+            if not fx and not fy:
+                fx, fy = 1.0, 0.0
+            mx, my = player.get_muzzle_position()
+            # Create symmetric angle offsets around 0\n
+            count = int(VOLLEY_BULLET_COUNT)
+            spread_deg = float(VOLLEY_SPREAD_DEGREES)
+            if count <= 1:
+                offsets = [0.0]
+            else:
+                step = spread_deg / float(count - 1)
+                start = -spread_deg / 2.0
+                offsets = [start + i * step for i in range(count)]
+            for deg in offsets:
+                rad = math.radians(deg)
+                cos_a = math.cos(rad)
+                sin_a = math.sin(rad)
+                rx = fx * cos_a - fy * sin_a
+                ry = fx * sin_a + fy * cos_a
+                bvx = rx * float(VOLLEY_BULLET_SPEED)
+                bvy = ry * float(VOLLEY_BULLET_SPEED)
+                bullets.append(Bullet(mx, my, bvx, bvy))
+            next_volley_time += float(VOLLEY_COOLDOWN_SECONDS)
 
         # Update bullets and remove off-screen
         alive_bullets: list[Bullet] = []
