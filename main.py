@@ -56,6 +56,49 @@ def compose_hint_surfaces(
     return hint_lines, font.get_linesize()
 
 
+def show_main_menu(
+    screen: pygame.Surface,
+    clock: pygame.time.Clock,
+) -> bool:
+    font_big = pygame.font.SysFont(FONT_NAME, 42)
+    font_small = pygame.font.SysFont(FONT_NAME, 24)
+    title = font_big.render(MENU_TITLE, True, TEXT_COLOR)
+    prompt = font_small.render(MENU_START_PROMPT, True, TEXT_COLOR)
+
+    blink_timer = 0.0
+    show_prompt = True
+
+    while True:
+        dt_ms = clock.tick(FPS)
+        dt = dt_ms / 1000.0
+        blink_timer += dt
+        if blink_timer > 0.6:
+            blink_timer = 0.0
+            show_prompt = not show_prompt
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    return True
+                if event.key == pygame.K_ESCAPE:
+                    return False
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                return True
+
+        screen.fill(BACKGROUND_COLOR)
+        # Center title
+        tx = WINDOW_WIDTH // 2 - title.get_width() // 2
+        ty = WINDOW_HEIGHT // 3 - title.get_height() // 2
+        screen.blit(title, (tx, ty))
+        if show_prompt:
+            px = WINDOW_WIDTH // 2 - prompt.get_width() // 2
+            py = ty + title.get_height() + 28
+            screen.blit(prompt, (px, py))
+        pygame.display.flip()
+
+
 def render_scene(
     screen: pygame.Surface,
     hint_surfaces: list[pygame.Surface],
@@ -306,7 +349,10 @@ def compute_spawn_interval(elapsed_seconds: float) -> float:
     return float(interval)
 
 
-def initialize_game() -> tuple[
+def initialize_game(
+    screen: pygame.Surface,
+    clock: pygame.time.Clock,
+) -> tuple[
     pygame.Surface,
     pygame.time.Clock,
     pygame.font.Font,
@@ -317,18 +363,10 @@ def initialize_game() -> tuple[
     list[Bullet],
     int,
 ]:
-    pygame.init()
-
-    screen = pygame.display.set_mode(
-        (WINDOW_WIDTH, WINDOW_HEIGHT)
-    )
-
-    pygame.display.set_caption(WINDOW_CAPTION)
-
-    clock = pygame.time.Clock()
-
     font = pygame.font.SysFont(FONT_NAME, 28)
-    hint_surfaces, hint_line_height = compose_hint_surfaces(font)
+    hint_surfaces, hint_line_height = compose_hint_surfaces(
+        font
+    )
 
     player = Player(
         float(WINDOW_WIDTH // 2),
@@ -535,6 +573,15 @@ def game_loop(
 
 
 def run() -> None:
+    pygame.init()
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    pygame.display.set_caption(WINDOW_CAPTION)
+    clock = pygame.time.Clock()
+
+    if not show_main_menu(screen, clock):
+        pygame.quit()
+        sys.exit(0)
+
     (
         screen,
         clock,
@@ -545,7 +592,7 @@ def run() -> None:
         monsters,
         bullets,
         next_boss_level,
-    ) = initialize_game()
+    ) = initialize_game(screen, clock)
 
     game_loop(
         screen,

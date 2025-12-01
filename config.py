@@ -23,6 +23,10 @@ HINT_TEXT = (
     "WASD to move\nESC to quit"
 )
 
+# Main menu texts
+MENU_TITLE = "Sure Not Monkeys"
+MENU_START_PROMPT = "Press Enter to Start  •  Esc to Quit"
+
 # Gameplay tuning (basic)
 PLAYER_BASE_SPEED = 280.0  # pixels per second
 PLAYER_RADIUS = 12
